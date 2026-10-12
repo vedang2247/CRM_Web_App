@@ -55,10 +55,16 @@ io.on('connection', (socket) => {
       return cb({ ok: false, error: 'not_ready' });
     }
     try {
-      const chats = await pushChatList(io);
+      // pushChatList emits 'wa:chats' to the socket AND returns the array.
+      // We also send the array back via ack so the loadChats thunk can
+      // resolve successfully (it checks res.ok && res.chats).
+      const chats = await pushChatList(socket);
+      if (!Array.isArray(chats)) {
+        return cb({ ok: false, error: 'Failed to retrieve chat list' });
+      }
       cb({ ok: true, chats });
     } catch (err) {
-      cb({ ok: false, error: err.message });
+      cb({ ok: false, error: err.message || 'Failed to load chats' });
     }
   });
 
@@ -73,28 +79,86 @@ io.on('connection', (socket) => {
     if (state.state !== 'ready' || !client) {
       return cb({ ok: false, error: 'not_ready' });
     }
+    if (!chatId) {
+      return cb({ ok: false, error: 'no_chatId' });
+    }
 
+    // ── Step 1: Open chat in WhatsApp Web UI to trigger local message loading ──
+    try {
+      if (client.interface && typeof client.interface.openChatWindow === 'function') {
+        await client.interface.openChatWindow(chatId);
+      }
+    } catch {
+      // Non-fatal, proceed with fetching
+    }
+
+    // ── Step 2: Try native chat.fetchMessages (now supported via WALinkify patch) ──
+    try {
+      const chat = await client.getChatById(chatId);
+      if (chat) {
+        const rawMsgs = await chat.fetchMessages({ limit });
+        if (Array.isArray(rawMsgs) && rawMsgs.length > 0) {
+          const messages = rawMsgs
+            .filter((m) => {
+              if (!m) return false;
+              if (m.isNotification || m.isGroupNotification) return false;
+              const t = m.type || '';
+              return !['notification_template', 'gp2', 'e2e_notification', 'protocol', 'ciphertext', 'broadcast_notification'].includes(t);
+            })
+            .map((m) => formatMessage(m))
+            .filter(Boolean);
+
+          if (messages.length > 0) {
+            console.log(`[WhatsApp] Loaded ${messages.length} messages for ${chatId} via native fetchMessages`);
+            return cb({ ok: true, messages });
+          }
+        }
+      }
+    } catch (nativeErr) {
+      console.warn(`[WhatsApp] Native fetchMessages failed for ${chatId}: ${nativeErr?.message || nativeErr}. Trying pupPage fallback…`);
+    }
+
+    // ── Step 3: pupPage fallback (direct evaluation) ─────────────────────
     try {
       if (client.pupPage) {
         const messages = await client.pupPage.evaluate(async (cId, lim) => {
           try {
             const ChatColl = window.require('WAWebCollections')?.Chat;
             if (!ChatColl) return [];
-            let chatModel = ChatColl.get(cId);
+            let chatModel = null;
+            try {
+              const wid = window.require('WAWebWidFactory')?.createWid(cId);
+              if (wid) chatModel = ChatColl.get(wid);
+            } catch {}
             if (!chatModel) {
-              try {
-                const wid = window.require('WAWebWidFactory')?.createWid(cId);
-                if (wid) chatModel = ChatColl.get(wid);
-              } catch {}
+              chatModel = ChatColl.get(cId);
             }
             if (!chatModel) {
               const arr = ChatColl.getModelsArray ? ChatColl.getModelsArray() : (ChatColl.models || []);
               chatModel = arr.find((x) => x?.id?._serialized === cId || x?.id === cId);
             }
-            if (!chatModel || !chatModel.msgs) return [];
+            if (!chatModel) return [];
 
-            // Load earlier messages if needed
-            if (chatModel.msgs.length < lim) {
+            // Open chat bottom if msgs empty
+            const curCount = chatModel.msgs?.length || chatModel.msgs?.models?.length || 0;
+            if (curCount === 0) {
+              try {
+                const Cmd = window.require('WAWebCmd')?.Cmd;
+                if (Cmd && typeof Cmd.openChatBottom === 'function') {
+                  await Cmd.openChatBottom({ chat: chatModel });
+                }
+              } catch {}
+
+              for (let i = 0; i < 15; i++) {
+                await new Promise((r) => setTimeout(r, 100));
+                const c = chatModel.msgs?.length || chatModel.msgs?.models?.length || 0;
+                if (c > 0) break;
+              }
+            }
+
+            // Load earlier messages if fewer than limit
+            const updatedCount = chatModel.msgs?.length || chatModel.msgs?.models?.length || 0;
+            if (updatedCount > 0 && updatedCount < lim) {
               try {
                 const loader = window.require('WAWebChatLoadMessages');
                 if (loader && typeof loader.loadEarlierMsgs === 'function') {
@@ -109,16 +173,13 @@ io.on('connection', (socket) => {
               myUser = myWid ? myWid.split('@')[0] : '';
             } catch {}
 
-            const models = chatModel.msgs.getModelsArray ? chatModel.msgs.getModelsArray() : (chatModel.msgs.models || []);
+            const models = chatModel.msgs ? (chatModel.msgs.getModelsArray ? chatModel.msgs.getModelsArray() : (chatModel.msgs.models || [])) : [];
 
-            // Filter out system notifications, gp2 events, reactions, and protocols
             const filtered = models.filter((m) => {
               if (!m) return false;
               if (m.isNotification || m.isGroupNotification) return false;
               const type = m.type || '';
-              if (['notification_template', 'gp2', 'e2e_notification', 'protocol', 'ciphertext', 'broadcast_notification'].includes(type)) {
-                return false;
-              }
+              if (['notification_template', 'gp2', 'e2e_notification', 'protocol', 'ciphertext', 'broadcast_notification'].includes(type)) return false;
               return true;
             });
 
@@ -129,13 +190,11 @@ io.on('connection', (socket) => {
                 const idSerialized = m.id?._serialized || String(Date.now() + Math.random());
                 const remoteChatId = m.id?.remote?._serialized || m.id?.remote || (m.id?.fromMe ? m.to : m.from) || cId;
 
-                // Sender & author
                 const author = m.author?._serialized || m.author || (m.id?.participant?._serialized || m.id?.participant) || '';
                 const authorUser = typeof author === 'string' && author ? author.split('@')[0] : '';
                 const fromMeFlag = Boolean(m.fromMe ?? m.id?.fromMe);
                 const isFromMe = fromMeFlag && (!authorUser || !myUser || authorUser === myUser);
 
-                // Author display name (for group chats)
                 let authorName = '';
                 if (!isFromMe && authorUser) {
                   try {
@@ -146,11 +205,8 @@ io.on('connection', (socket) => {
                   }
                 }
 
-                // Body formatting
                 let bodyText = m.body || '';
-                if (m.caption) {
-                  bodyText = m.caption;
-                }
+                if (m.caption) bodyText = m.caption;
 
                 const isMedia = Boolean(m.hasMedia || ['image', 'video', 'audio', 'ptt', 'document', 'sticker'].includes(m.type));
                 if (isMedia && !bodyText) {
@@ -170,9 +226,8 @@ io.on('connection', (socket) => {
                   bodyText = '[This message was deleted]';
                 }
 
-                // Discard empty text or raw JIDs
-                if (!bodyText.trim() || bodyText.endsWith('@lid') || bodyText.endsWith('@c.us') || bodyText.endsWith('@g.us')) {
-                  return null;
+                if (!bodyText.trim()) {
+                  bodyText = isMedia ? '[Media message]' : '[Message]';
                 }
 
                 return {
@@ -196,15 +251,15 @@ io.on('connection', (socket) => {
         }, chatId, limit);
 
         if (Array.isArray(messages)) {
+          console.log(`[WhatsApp] Loaded ${messages.length} messages for ${chatId} via pupPage fallback`);
           return cb({ ok: true, messages });
         }
       }
-
-      cb({ ok: true, messages: [] });
     } catch (err) {
-      console.warn(`[WhatsApp] Error in getMessages for ${chatId}:`, err?.message || err);
-      cb({ ok: true, messages: [] });
+      console.warn(`[WhatsApp] pupPage fallback also failed for ${chatId}:`, err?.message || err);
     }
+
+    cb({ ok: true, messages: [] });
   });
 
   // 3. Send message (Strictly user-triggered only)

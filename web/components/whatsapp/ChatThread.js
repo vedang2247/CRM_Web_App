@@ -5,7 +5,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import Avatar from '@/components/Avatar';
 import MessageBubble from './MessageBubble';
 import Composer from './Composer';
-import { setChatStatus, setActiveChat } from '@/lib/slices/whatsappSlice';
+import { setChatStatus, setActiveChat, loadMessages } from '@/lib/slices/whatsappSlice';
 
 /** Formats a timestamp into a friendly calendar date label */
 function getDateLabel(timestamp) {
@@ -41,6 +41,10 @@ export default function ChatThread({ onBack }) {
   const activeChat = activeChatId ? chatsById[activeChatId] : null;
   const messages = activeChatId && messagesByChat[activeChatId] ? messagesByChat[activeChatId] : [];
   const currentStatus = activeChatId ? chatStatus[activeChatId] || 'open' : 'open';
+  const messagesLoading = useSelector((s) => s.whatsapp.messagesLoading);
+  const messagesError   = useSelector((s) => s.whatsapp.messagesError);
+  // Has the chat ever had messages fetched? (key exists in messagesByChat)
+  const hasFetched = activeChatId ? activeChatId in messagesByChat : false;
 
   // Scroll to bottom when messages change or chat is selected
   useEffect(() => {
@@ -135,16 +139,44 @@ export default function ChatThread({ onBack }) {
 
       {/* Messages Stream */}
       <div className="relative z-10 flex-1 overflow-y-auto py-3 space-y-1">
-        {messages.length === 0 ? (
+        {messagesLoading && messages.length === 0 ? (
+          // ── Loading spinner ──────────────────────────────────────────────────
+          <div className="h-full flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-[3px] border-wa-accent/20 border-t-wa-accent rounded-full animate-spin" />
+            <p className="text-xs font-medium text-slate-500 bg-white/80 px-3 py-1 rounded-full shadow-sm">
+              Loading messages…
+            </p>
+          </div>
+        ) : messages.length === 0 ? (
+          // ── Empty / failed state ─────────────────────────────────────────────
           <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
             <div className="p-3 rounded-full bg-white/70 shadow-sm mb-2">
               <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
             </div>
-            <p className="text-xs font-medium text-slate-600 bg-white/80 px-3 py-1 rounded-full shadow-sm">
-              No messages loaded yet
-            </p>
+            {hasFetched && messagesError ? (
+              <>
+                <p className="text-xs font-semibold text-red-500 bg-red-50 px-3 py-1 rounded-full shadow-sm">
+                  Failed to load messages
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1 max-w-[220px] break-words">
+                  {messagesError}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs font-medium text-slate-600 bg-white/80 px-3 py-1 rounded-full shadow-sm">
+                {hasFetched ? 'No messages in this chat' : 'No messages loaded yet'}
+              </p>
+            )}
+            {activeChatId && (
+              <button
+                onClick={() => dispatch(loadMessages(activeChatId))}
+                className="mt-3 text-xs font-semibold text-wa-accent hover:underline"
+              >
+                {messagesError ? 'Retry' : 'Load messages'}
+              </button>
+            )}
           </div>
         ) : (
           messages.map((msg, index) => {
@@ -169,6 +201,7 @@ export default function ChatThread({ onBack }) {
         )}
         <div ref={messagesEndRef} />
       </div>
+
 
       {/* Composer */}
       <div className="relative z-10">

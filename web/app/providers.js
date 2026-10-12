@@ -42,7 +42,11 @@ function AppBootstrap({ children }) {
 
     // 2. Wire server → Redux
     const onStatus       = (data)             => dispatch(setWaStatus(data));
-    const onChats        = (chats)            => dispatch(setChats(chats));
+    const onChats        = (chats)            => {
+      if (Array.isArray(chats) && chats.length > 0) {
+        dispatch(setChats(chats));
+      }
+    };
     const onMessage      = (msg)              => dispatch(upsertMessage(msg));
     const onAck          = ({ chatId, id, ack }) => dispatch(setAck({ chatId, id, ack }));
     const onConnectError = ()                 => dispatch(setWaStatus({

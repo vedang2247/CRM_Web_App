@@ -20,9 +20,12 @@ export const loadChats = createAsyncThunk(
     try {
       dispatch(setLoading(true));
       const res = await emitAck('wa:getChats');
-      if (res && res.ok && Array.isArray(res.chats)) {
-        dispatch(setChats(res.chats));
-        return res.chats;
+      if (res && res.ok) {
+        // pushChatList on the server already emitted 'wa:chats' to this socket,
+        // which providers.js handles and dispatches setChats automatically.
+        // No need to dispatch setChats here — doing so would double-apply the
+        // same chat list and cause a redundant re-render race.
+        return res.chats || [];
       }
       const err = res?.error || 'Failed to load chats';
       dispatch(setError(err));
@@ -38,16 +41,32 @@ export const loadChats = createAsyncThunk(
 
 export const loadMessages = createAsyncThunk(
   'whatsapp/loadMessages',
-  async (chatId, { dispatch, rejectWithValue }) => {
+  async (chatId, { dispatch, getState, rejectWithValue }) => {
     try {
-      const res = await emitAck('wa:getMessages', { chatId, limit: 50 });
+      dispatch(setMessagesLoading(true));
+      dispatch(setMessagesError(null));
+      const res = await emitAck('wa:getMessages', { chatId, limit: 50 }, 25000);
       if (res && res.ok && Array.isArray(res.messages)) {
         dispatch(setMessages({ chatId, messages: res.messages }));
         return { chatId, messages: res.messages };
       }
-      return rejectWithValue(res?.error || 'Failed to load messages');
+      const errMsg = res?.error || 'Failed to load messages';
+      const existing = getState().whatsapp?.messagesByChat?.[chatId];
+      if (!existing || existing.length === 0) {
+        dispatch(setMessages({ chatId, messages: [] }));
+      }
+      dispatch(setMessagesError(errMsg));
+      return rejectWithValue(errMsg);
     } catch (err) {
-      return rejectWithValue(err.message);
+      const errMsg = err.message || 'Failed to load messages';
+      const existing = getState().whatsapp?.messagesByChat?.[chatId];
+      if (!existing || existing.length === 0) {
+        dispatch(setMessages({ chatId, messages: [] }));
+      }
+      dispatch(setMessagesError(errMsg));
+      return rejectWithValue(errMsg);
+    } finally {
+      dispatch(setMessagesLoading(false));
     }
   }
 );
@@ -124,7 +143,11 @@ const whatsappSlice = createSlice({
     tasks: [],
 
     loading: false,
+    /** True while wa:getMessages ack is in-flight for the active chat */
+    messagesLoading: false,
     error:   null,
+    /** Last error message from loadMessages (null when no error) */
+    messagesError: null,
   },
 
   reducers: {
@@ -136,6 +159,12 @@ const whatsappSlice = createSlice({
      */
     setChats(state, action) {
       const chats = action.payload;
+      if (!Array.isArray(chats)) return;
+      // Never wipe out existing chats if an empty array is received
+      if (chats.length === 0 && state.chatOrder.length > 0) {
+        state.loading = false;
+        return;
+      }
       state.chatsById = {};
       chats.forEach((chat) => {
         state.chatsById[chat.id] = chat;
@@ -271,6 +300,14 @@ const whatsappSlice = createSlice({
       state.loading = action.payload;
     },
 
+    setMessagesLoading(state, action) {
+      state.messagesLoading = action.payload;
+    },
+
+    setMessagesError(state, action) {
+      state.messagesError = action.payload;
+    },
+
     setError(state, action) {
       state.error = action.payload;
     },
@@ -303,7 +340,7 @@ export const {
   setChats, upsertMessage, setMessages, removeMessage,
   setActiveChat, setAck, setChatStatus,
   setSearch, setFilter,
-  setLoading, setError,
+  setLoading, setMessagesLoading, setMessagesError, setError,
   addTask, removeTask,
 } = whatsappSlice.actions;
 

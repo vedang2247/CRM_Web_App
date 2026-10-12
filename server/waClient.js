@@ -113,12 +113,18 @@ export async function pushChatList(target, retries = 5) {
                       const authorUser = typeof author === 'string' && author ? author.split('@')[0] : '';
                       const isFromMe = fromMeFlag && (!authorUser || !myUser || authorUser === myUser);
 
-                      lastMessage = {
-                        body: last.hasMedia || last.type === 'image' || last.type === 'video'
-                          ? '[Media message]'
-                          : (last.body || ''),
-                        fromMe: isFromMe,
-                      };
+                      let bodyText = last.body || '';
+                      if (last.hasMedia || ['image', 'video', 'audio', 'ptt', 'document', 'sticker'].includes(last.type)) {
+                        bodyText = '[Media message]';
+                      } else if (['protocol', 'gp2', 'e2e_notification', 'notification_template'].includes(last.type) || /^\d{9,13}$/.test(bodyText.trim())) {
+                        bodyText = '';
+                      }
+                      if (bodyText) {
+                        lastMessage = {
+                          body: bodyText,
+                          fromMe: isFromMe,
+                        };
+                      }
                     }
                   }
 
@@ -167,9 +173,13 @@ export async function pushChatList(target, retries = 5) {
           };
         });
 
-      console.log(`[WhatsApp] Successfully loaded and pushed ${chats.length} chats to browser.`);
-      if (target && typeof target.emit === 'function') {
-        target.emit('wa:chats', chats);
+      if (chats.length > 0) {
+        console.log(`[WhatsApp] Successfully loaded and pushed ${chats.length} chats to browser.`);
+        if (target && typeof target.emit === 'function') {
+          target.emit('wa:chats', chats);
+        }
+      } else {
+        console.warn('[WhatsApp] No chats found on this attempt, skipping emit to preserve existing chats.');
       }
       return chats;
     } catch (err) {
@@ -282,10 +292,15 @@ export function init(io) {
 
   client.on('message_ack', (msg, ack) => {
     if (state.state !== 'ready') return;
-    const chatId = msg.id?.remote || (msg.fromMe ? msg.to : msg.from);
+    // msg.id.remote is a WID object — always extract ._serialized for a plain string
+    const chatId =
+      msg.id?.remote?._serialized ||
+      (typeof msg.id?.remote === 'string' ? msg.id.remote : null) ||
+      (msg.fromMe ? msg.to : msg.from);
+    if (!chatId || !msg.id?._serialized) return;
     io.emit('wa:ack', {
       chatId,
-      id: msg.id?._serialized,
+      id: msg.id._serialized,
       ack: typeof ack === 'number' ? ack : (msg.ack ?? 0),
     });
   });

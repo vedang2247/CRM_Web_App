@@ -38,16 +38,32 @@ export function getSocket() {
 
 /**
  * Convenience helper: emit an event and return a Promise that resolves
- * with the acknowledgement payload.
+ * with the acknowledgement payload, or rejects after a timeout.
+ *
+ * Why a timeout? If the socket is disconnected or the server never calls
+ * the ack callback, the Promise would hang forever — freezing loadChats /
+ * loadMessages with loading:true and no recovery path.
+ *
  * Usage: await emitAck('wa:getChats')
+ *        await emitAck('wa:getMessages', { chatId, limit: 50 }, 20000)
  */
-export function emitAck(event, payload) {
-  return new Promise((resolve) => {
+export function emitAck(event, payload, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
     const sock = getSocket();
+
+    const timer = setTimeout(() => {
+      reject(new Error(`Socket timeout: no ack for "${event}" after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const done = (result) => {
+      clearTimeout(timer);
+      resolve(result);
+    };
+
     if (payload !== undefined) {
-      sock.emit(event, payload, resolve);
+      sock.emit(event, payload, done);
     } else {
-      sock.emit(event, resolve);
+      sock.emit(event, done);
     }
   });
 }
