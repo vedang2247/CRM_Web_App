@@ -54,18 +54,4 @@ Open [http://localhost:3000](http://localhost:3000).
 | `PORT` | `server/.env` | `4000` |
 | `WEB_ORIGIN` | `server/.env` | `http://localhost:3000` |
 
-## ⚠️ Unofficial WhatsApp Disclaimer
 
-<!-- TODO Step 30: fill in -->
-
-## Known Limitations
-
-<!-- TODO Step 30: fill in -->
-
-## Screenshots
-
-<!-- TODO Step 30: add screenshots after first full run -->
-
-## Demo Script (~3 minutes)
-
-<!-- TODO Step 30: fill in -->
