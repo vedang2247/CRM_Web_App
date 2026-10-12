@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment variables — NEVER commit real credentials
+.env
+.env.local
+.env.*.local
+
+# WhatsApp session data (contains auth tokens for your phone link)
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Next.js build output
+.next/
+out/
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
