@@ -2,12 +2,16 @@ import { configureStore } from '@reduxjs/toolkit';
 import connectionsReducer from './slices/connectionsSlice';
 import whatsappReducer   from './slices/whatsappSlice';
 import emailReducer      from './slices/emailSlice';
+import tasksReducer      from './slices/tasksSlice';
+import templatesReducer  from './slices/templatesSlice';
 
 export const store = configureStore({
   reducer: {
     connections: connectionsReducer,
     whatsapp:    whatsappReducer,
     email:       emailReducer,
+    tasks:       tasksReducer,
+    templates:   templatesReducer,
   },
   // Disable serializability check for socket-related non-serializable values
   // (we never store non-serializable data in Redux, but this silences the warning

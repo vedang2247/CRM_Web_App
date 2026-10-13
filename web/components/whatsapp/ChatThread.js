@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useSelector, useDispatch } from 'react-redux';
 import Avatar from '@/components/Avatar';
 import MessageBubble from './MessageBubble';
 import Composer from './Composer';
-import { setChatStatus, setActiveChat, loadMessages } from '@/lib/slices/whatsappSlice';
+import { updateChatStatus, setActiveChat, loadMessages } from '@/lib/slices/whatsappSlice';
 
 /** Formats a timestamp into a friendly calendar date label */
 function getDateLabel(timestamp) {
@@ -37,6 +38,7 @@ export default function ChatThread({ onBack }) {
   const messagesByChat = useSelector((s) => s.whatsapp.messagesByChat);
   const chatStatus = useSelector((s) => s.whatsapp.chatStatus);
 
+  const [linkedTasks, setLinkedTasks] = useState([]);
   const messagesEndRef = useRef(null);
   const activeChat = activeChatId ? chatsById[activeChatId] : null;
   const messages = activeChatId && messagesByChat[activeChatId] ? messagesByChat[activeChatId] : [];
@@ -53,10 +55,23 @@ export default function ChatThread({ onBack }) {
     }
   }, [messages.length, activeChatId]);
 
+  // Fetch linked CRM tasks for the active chat
+  useEffect(() => {
+    if (!activeChatId) {
+      setLinkedTasks([]);
+      return;
+    }
+    fetch(`/api/chats/linked-tasks?chatId=${encodeURIComponent(activeChatId)}`)
+      .then((res) => (res.ok ? res.json() : { links: [] }))
+      .then((data) => setLinkedTasks(data.links || []))
+      .catch(() => setLinkedTasks([]));
+  }, [activeChatId]);
+
   const toggleStatus = () => {
     if (!activeChatId) return;
     const newStatus = currentStatus === 'open' ? 'resolved' : 'open';
-    dispatch(setChatStatus({ chatId: activeChatId, status: newStatus }));
+    // M8: persist to DB via thunk (updateChatStatus also dispatches setChatStatus internally)
+    dispatch(updateChatStatus({ chatId: activeChatId, status: newStatus }));
   };
 
   if (!activeChatId || !activeChat) {
@@ -136,6 +151,38 @@ export default function ChatThread({ onBack }) {
           </button>
         </div>
       </div>
+
+      {/* Linked Tasks Banner */}
+      {linkedTasks.length > 0 && (
+        <div className="relative z-10 px-4 py-2 bg-emerald-50/95 border-b border-emerald-200/80 flex items-center justify-between text-xs text-emerald-800 shadow-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            <span className="font-medium">
+              Linked to CRM {linkedTasks.length === 1 ? 'task' : 'tasks'}:
+            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {linkedTasks.map((link) => link.task && (
+                <Link
+                  key={link.id}
+                  href={`/tasks/${link.task.id}`}
+                  className="font-mono font-bold bg-white px-2 py-0.5 rounded-md border border-emerald-300 text-emerald-700 hover:bg-emerald-100 transition-colors shadow-2xs"
+                  title={link.task.title}
+                >
+                  TSK{String(link.task.id).padStart(4, '0')}
+                </Link>
+              ))}
+            </div>
+          </div>
+          <Link
+            href="/tasks"
+            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 hover:underline shrink-0 ml-2"
+          >
+            View all tasks &rarr;
+          </Link>
+        </div>
+      )}
 
       {/* Messages Stream */}
       <div className="relative z-10 flex-1 overflow-y-auto py-3 space-y-1">

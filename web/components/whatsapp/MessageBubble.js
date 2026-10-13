@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
-import { addTask } from '@/lib/slices/whatsappSlice';
+import { useSelector } from 'react-redux';
+import ConvertToTaskModal from '@/components/tasks/ConvertToTaskModal';
 
 /** Format message time HH:mm */
 function formatTime(timestamp) {
@@ -13,10 +13,9 @@ function formatTime(timestamp) {
 
 export default function MessageBubble({ message }) {
   // ── All hooks MUST come before any conditional return ──────────────────────
-  const dispatch = useDispatch();
   const chatsById = useSelector((s) => s.whatsapp.chatsById);
   const [contextMenu, setContextMenu] = useState(null); // { x, y } | null
-  const [taskAdded, setTaskAdded] = useState(false);
+  const [showConvertModal, setShowConvertModal] = useState(false);
 
   const handleContextMenu = useCallback((e) => {
     e.preventDefault();
@@ -26,18 +25,11 @@ export default function MessageBubble({ message }) {
   const handleCloseContextMenu = useCallback(() => setContextMenu(null), []);
 
   const { body, fromMe, timestamp, ack, hasMedia, authorName, chatId } = message;
-  const activeChat = chatId ? chatsById[chatId] : null;
 
   const handleConvertToTask = useCallback(() => {
-    dispatch(addTask({
-      text: body,
-      chatId: message.chatId,
-      chatName: activeChat?.name || message.chatId,
-    }));
     setContextMenu(null);
-    setTaskAdded(true);
-    setTimeout(() => setTaskAdded(false), 2000);
-  }, [dispatch, body, message.chatId, activeChat]);
+    setShowConvertModal(true);
+  }, []);
 
   // ── Guard: filter out empty messages, raw JIDs ─────────────────────────────
   if (!body || !body.trim() || body.endsWith('@lid') || body.endsWith('@c.us') || body.endsWith('@g.us')) {
@@ -166,6 +158,13 @@ export default function MessageBubble({ message }) {
           </div>
         </>
       )}
+
+      {/* Convert to Task Modal */}
+      <ConvertToTaskModal
+        isOpen={showConvertModal}
+        message={message}
+        onClose={() => setShowConvertModal(false)}
+      />
     </>
   );
 }

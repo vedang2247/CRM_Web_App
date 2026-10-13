@@ -26,14 +26,33 @@ export function getSocket() {
     process.env.NEXT_PUBLIC_WA_SERVER_URL || 'http://localhost:4000';
 
   socket = io(url, {
-    autoConnect:         false,
-    reconnection:        true,
-    reconnectionDelay:   2000,
-    reconnectionAttempts: Infinity,
-    transports:          ['websocket', 'polling'],
+    autoConnect:              false,
+    reconnection:             true,
+    reconnectionDelay:        1500,
+    reconnectionDelayMax:     8000,
+    reconnectionAttempts:     Infinity,
+    randomizationFactor:      0.4,
+    timeout:                  10000,
+    transports:               ['websocket', 'polling'],
   });
 
   return socket;
+}
+
+/**
+ * Destroy the cached socket and create a fresh one.
+ * Useful when the server restarts and the browser needs
+ * to establish a clean connection.
+ */
+export function forceReconnect() {
+  const sock = getSocket();
+  try {
+    sock.disconnect();
+  } catch {
+    /* ignore */
+  }
+  sock.connect();
+  return sock;
 }
 
 /**

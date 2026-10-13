@@ -1,11 +1,9 @@
 'use client';
 
+// @deprecated — replaced by /tasks page in M4
 /**
- * TaskDrawer.js — Slide-in task panel (Step 26 / Milestone 8)
- *
- * Displays tasks created via right-click → "Convert to Task" on any message bubble.
- * Tasks are in-memory only (Redux state, resets on page refresh).
- * Toggle via the bell/task icon button in the WhatsApp page header.
+ * TaskDrawer.js — Slide-in task panel (Deprecated)
+ * Replaced by database-backed /tasks page in CRM Milestone M4.
  */
 
 import React from 'react';

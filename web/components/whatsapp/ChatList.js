@@ -49,6 +49,34 @@ export default function ChatList({ onSelectChat }) {
   const filter = useSelector((s) => s.whatsapp.filter);
   const chatStatus = useSelector((s) => s.whatsapp.chatStatus);
   const loading = useSelector((s) => s.whatsapp.loading);
+  const [linkedTasksByChat, setLinkedTasksByChat] = React.useState({});
+
+  // Lazily fetch linked tasks for visible chats
+  React.useEffect(() => {
+    if (!chatOrder || chatOrder.length === 0) return;
+    const fetchPromises = chatOrder.slice(0, 30).map(async (id) => {
+      try {
+        const res = await fetch(`/api/chats/linked-tasks?chatId=${encodeURIComponent(id)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.count > 0) {
+            return { id, data };
+          }
+        }
+      } catch {
+        // ignore
+      }
+      return null;
+    });
+
+    Promise.all(fetchPromises).then((results) => {
+      const map = {};
+      results.filter(Boolean).forEach(({ id, data }) => {
+        map[id] = data;
+      });
+      setLinkedTasksByChat(map);
+    });
+  }, [chatOrder]);
 
   const handleSelect = (chatId) => {
     dispatch(setActiveChat(chatId));
@@ -228,6 +256,25 @@ export default function ChatList({ onSelectChat }) {
                       )}
                     </div>
                   </div>
+
+                  {/* Linked Tasks Badges */}
+                  {linkedTasksByChat[id]?.taskCodes?.length > 0 && (
+                    <div className="flex items-center gap-1 mt-1">
+                      {linkedTasksByChat[id].taskCodes.slice(0, 2).map((code) => (
+                        <span
+                          key={code}
+                          className="font-mono text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-1.5 py-0.5 rounded"
+                        >
+                          {code}
+                        </span>
+                      ))}
+                      {linkedTasksByChat[id].taskCodes.length > 2 && (
+                        <span className="text-[9px] text-slate-400 font-medium">
+                          +{linkedTasksByChat[id].taskCodes.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );

@@ -9,6 +9,8 @@ const TABS = [
   { label: 'Connections', href: '/connections', id: 'nav-connections' },
   { label: 'WhatsApp',    href: '/whatsapp',    id: 'nav-whatsapp'    },
   { label: 'Email',       href: '/email',       id: 'nav-email'       },
+  { label: 'Tasks',       href: '/tasks',       id: 'nav-tasks'       },
+  { label: 'Templates',   href: '/templates',   id: 'nav-templates'   },
 ];
 
 export default function TopNav() {
@@ -29,7 +31,7 @@ export default function TopNav() {
           </svg>
         </div>
         <span className="text-white font-semibold text-sm tracking-wide leading-none">
-          Unified Inbox
+          CRM
         </span>
       </div>
 

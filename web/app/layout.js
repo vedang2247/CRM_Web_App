@@ -2,9 +2,9 @@ import "./globals.css";
 import Providers from "./providers";
 
 export const metadata = {
-  title: "Unified Inbox — WhatsApp & Gmail",
+  title: "CRM — Unified Communications",
   description:
-    "A unified communication inbox integrating WhatsApp (QR scan) and Gmail (OAuth 2.0). Built as an intern assignment demo.",
+    "Task-based CRM with WhatsApp and Gmail integration. Manage tasks, clients, and team communications in one unified inbox.",
 };
 
 export default function RootLayout({ children }) {

@@ -14,6 +14,49 @@ function sortByTimestamp(chatOrder, chatsById) {
 
 // ─── Thunks ──────────────────────────────────────────────────────────────────
 
+/**
+ * M8 — Fetch DB status for a list of chatIds and merge into Redux.
+ * Call this after setChats to hydrate from the DB instead of localStorage.
+ */
+export const syncChatStatus = createAsyncThunk(
+  'whatsapp/syncChatStatus',
+  async (chatIds, { dispatch }) => {
+    if (!chatIds || chatIds.length === 0) return;
+    try {
+      const res = await fetch(
+        `/api/chats/status?chatIds=${chatIds.map(encodeURIComponent).join(',')}`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.statuses && typeof data.statuses === 'object') {
+        dispatch(setChatStatusBulk(data.statuses));
+      }
+    } catch {
+      // non-critical — ignore network errors
+    }
+  }
+);
+
+/**
+ * M8 — Persist a single chat status change to the DB, then update Redux.
+ * Replaces calling dispatch(setChatStatus(...)) + localStorage write.
+ */
+export const updateChatStatus = createAsyncThunk(
+  'whatsapp/updateChatStatus',
+  async ({ chatId, status }, { dispatch }) => {
+    try {
+      await fetch('/api/chats/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId, status }),
+      });
+    } catch {
+      // non-critical — we still update Redux even if DB write fails
+    }
+    dispatch(setChatStatus({ chatId, status })); // update Redux state
+  }
+);
+
 export const loadChats = createAsyncThunk(
   'whatsapp/loadChats',
   async (_, { dispatch, rejectWithValue }) => {
@@ -135,13 +178,6 @@ const whatsappSlice = createSlice({
     /** 'open' | 'resolved' | 'all' */
     filter: 'all',
 
-    /**
-     * tasks: Task[]
-     * Task shape: { id, text, chatId, chatName, createdAt }
-     * In-memory only — resets on page refresh (no DB).
-     */
-    tasks: [],
-
     loading: false,
     /** True while wa:getMessages ack is in-flight for the active chat */
     messagesLoading: false,
@@ -155,7 +191,8 @@ const whatsappSlice = createSlice({
 
     /**
      * Replace the entire chat list (called after wa:getChats ack).
-     * Also rehydrates chatStatus from localStorage.
+     * M8: No longer reads chatStatus from localStorage — DB sync happens
+     * via syncChatStatus thunk dispatched from providers.js after setChats.
      */
     setChats(state, action) {
       const chats = action.payload;
@@ -170,15 +207,6 @@ const whatsappSlice = createSlice({
         state.chatsById[chat.id] = chat;
       });
       state.chatOrder = sortByTimestamp(chats.map((c) => c.id), state.chatsById);
-
-      // Rehydrate chatStatus from localStorage
-      try {
-        const saved = localStorage.getItem('wa_chat_status');
-        if (saved) state.chatStatus = JSON.parse(saved);
-      } catch {
-        // ignore
-      }
-
       state.loading = false;
       state.error   = null;
     },
@@ -266,14 +294,23 @@ const whatsappSlice = createSlice({
 
     // ── Chat status (Open / Resolved) ─────────────────────────────────────────
 
+    /**
+     * Pure Redux update (no side-effects).
+     * M8: localStorage write REMOVED — use updateChatStatus thunk to persist to DB.
+     */
     setChatStatus(state, action) {
       const { chatId, status } = action.payload;
       state.chatStatus[chatId] = status;
-      // Persist to localStorage
-      try {
-        localStorage.setItem('wa_chat_status', JSON.stringify(state.chatStatus));
-      } catch {
-        // ignore
+    },
+
+    /**
+     * M8 — Bulk-merge a { [chatId]: status } map into chatStatus.
+     * Called by syncChatStatus thunk after hydrating from DB.
+     */
+    setChatStatusBulk(state, action) {
+      const statuses = action.payload;
+      if (statuses && typeof statuses === 'object') {
+        Object.assign(state.chatStatus, statuses);
       }
     },
 
@@ -312,36 +349,14 @@ const whatsappSlice = createSlice({
       state.error = action.payload;
     },
 
-    // ── Tasks (Convert to Task from message context menu) ─────────────────────
-
-    /**
-     * Add a task derived from a WhatsApp message.
-     * payload: { text, chatId, chatName }
-     */
-    addTask(state, action) {
-      const { text, chatId, chatName } = action.payload;
-      state.tasks.push({
-        id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        text,
-        chatId,
-        chatName: chatName || chatId,
-        createdAt: new Date().toISOString(),
-      });
-    },
-
-    /** Remove a task by its id */
-    removeTask(state, action) {
-      state.tasks = state.tasks.filter((t) => t.id !== action.payload);
-    },
   },
 });
 
 export const {
   setChats, upsertMessage, setMessages, removeMessage,
-  setActiveChat, setAck, setChatStatus,
+  setActiveChat, setAck, setChatStatus, setChatStatusBulk,
   setSearch, setFilter,
   setLoading, setMessagesLoading, setMessagesError, setError,
-  addTask, removeTask,
 } = whatsappSlice.actions;
 
 export default whatsappSlice.reducer;

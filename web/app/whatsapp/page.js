@@ -6,15 +6,12 @@ import { useSelector, useDispatch } from 'react-redux';
 import { loadChats } from '@/lib/slices/whatsappSlice';
 import ChatList from '@/components/whatsapp/ChatList';
 import ChatThread from '@/components/whatsapp/ChatThread';
-import TaskDrawer from '@/components/whatsapp/TaskDrawer';
 
 export default function WhatsAppPage() {
   const dispatch = useDispatch();
   const waState = useSelector((s) => s.connections.wa.state);
   const activeChatId = useSelector((s) => s.whatsapp.activeChatId);
-  const tasks = useSelector((s) => s.whatsapp.tasks);
   const [mobileShowThread, setMobileShowThread] = useState(false);
-  const [taskDrawerOpen, setTaskDrawerOpen] = useState(false);
 
   // Load chats on mount or whenever WhatsApp transitions to ready
   useEffect(() => {
@@ -76,39 +73,23 @@ export default function WhatsAppPage() {
         >
           {/* Task Drawer toggle button in thread header area */}
           <div className="flex-1 relative flex flex-col overflow-hidden">
-            {/* Task toggle button — floats over the chat */}
-            <button
-              onClick={() => setTaskDrawerOpen(!taskDrawerOpen)}
-              className={`absolute top-2.5 right-3 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold shadow-sm transition-all border ${
-                taskDrawerOpen
-                  ? 'bg-wa-accent text-white border-wa-accent'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-              }`}
-              title="Toggle task drawer"
+            {/* Tasks link button — direct link to /tasks */}
+            <Link
+              href="/tasks"
+              className="absolute top-2.5 right-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-sm transition-all border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-wa-accent hover:border-slate-300"
+              title="Open Task Dashboard"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5 text-wa-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
               <span className="hidden sm:inline">Tasks</span>
-              {tasks.length > 0 && (
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                  taskDrawerOpen ? 'bg-white/30 text-white' : 'bg-wa-accent text-white'
-                }`}>
-                  {tasks.length}
-                </span>
-              )}
-            </button>
+              <span className="text-[10px] text-slate-400">↗</span>
+            </Link>
 
             <ChatThread onBack={() => setMobileShowThread(false)} />
           </div>
         </section>
       </div>
-
-      {/* Task Drawer — slide-in panel from right */}
-      <TaskDrawer
-        open={taskDrawerOpen}
-        onClose={() => setTaskDrawerOpen(false)}
-      />
     </>
   );
 }

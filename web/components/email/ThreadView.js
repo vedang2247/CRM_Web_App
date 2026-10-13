@@ -3,6 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import Avatar from '@/components/Avatar';
+import Link from 'next/link';
+import LinkToTaskModal from '@/components/tasks/LinkToTaskModal';
+import ConvertEmailToTaskModal from '@/components/tasks/ConvertEmailToTaskModal';
+import { taskCode } from '@/lib/normalise';
 import { sendEmail, loadThread } from '@/lib/slices/emailSlice';
 
 function formatSender(fromStr = '') {
@@ -39,11 +43,26 @@ export default function ThreadView({ onBack }) {
   const [replyBody, setReplyBody] = useState('');
   const [showReplyBox, setShowReplyBox] = useState(false);
   const [activeTab, setActiveTab] = useState('text'); // 'text' | 'html'
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [showConvertModal, setShowConvertModal] = useState(false);
+  const [linkedTasks, setLinkedTasks] = useState([]);
   const replyRef = useRef(null);
 
   const activeThreadSummary = threads.find((t) => t.id === activeThreadId);
   const messages = activeThreadId ? threadDetail[activeThreadId] || [] : [];
   const latestMessage = messages[messages.length - 1] || null;
+
+  // Fetch linked CRM tasks for the active email thread
+  useEffect(() => {
+    if (!activeThreadId) {
+      setLinkedTasks([]);
+      return;
+    }
+    fetch(`/api/email/linked-tasks?threadId=${encodeURIComponent(activeThreadId)}`)
+      .then((res) => (res.ok ? res.json() : { links: [] }))
+      .then((data) => setLinkedTasks(data.links || []))
+      .catch(() => setLinkedTasks([]));
+  }, [activeThreadId, showLinkModal, showConvertModal]);
 
   // Pre-fill quote when clicking Reply
   const handleOpenReply = () => {
@@ -148,6 +167,28 @@ export default function ThreadView({ onBack }) {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowLinkModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold shadow-2xs transition-all hover:border-slate-300"
+            title="Attach this thread to an existing task"
+          >
+            <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            <span className="hidden sm:inline">Link to Task</span>
+          </button>
+
+          <button
+            onClick={() => setShowConvertModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold shadow-2xs transition-all hover:border-slate-300"
+            title="Convert email thread into a new CRM task"
+          >
+            <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            <span className="hidden sm:inline">Convert to Task</span>
+          </button>
+
+          <button
             onClick={handleOpenReply}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all active:scale-95"
           >
@@ -158,6 +199,38 @@ export default function ThreadView({ onBack }) {
           </button>
         </div>
       </div>
+
+      {/* Linked Tasks Banner */}
+      {linkedTasks.length > 0 && (
+        <div className="px-6 py-2 bg-blue-50/90 border-b border-blue-200/80 flex items-center justify-between text-xs text-blue-900 shrink-0 shadow-2xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <svg className="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            <span className="font-medium">
+              Linked to CRM {linkedTasks.length === 1 ? 'task' : 'tasks'}:
+            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {linkedTasks.map((link) => link.task && (
+                <Link
+                  key={link.id}
+                  href={`/tasks/${link.task.id}`}
+                  className="font-mono font-bold bg-white px-2 py-0.5 rounded-md border border-blue-300 text-blue-700 hover:bg-blue-100 transition-colors shadow-2xs"
+                  title={link.task.title}
+                >
+                  {taskCode(link.task.id)}
+                </Link>
+              ))}
+            </div>
+          </div>
+          <Link
+            href="/tasks"
+            className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 hover:underline shrink-0 ml-2"
+          >
+            View all tasks &rarr;
+          </Link>
+        </div>
+      )}
 
       {/* Messages Timeline Container */}
       <div className="flex-1 overflow-y-auto p-6 space-y-5">
@@ -315,6 +388,21 @@ export default function ThreadView({ onBack }) {
           )
         )}
       </div>
+
+      {/* Link to Task Modal */}
+      <LinkToTaskModal
+        isOpen={showLinkModal}
+        thread={activeThreadSummary || (latestMessage ? { id: activeThreadId, subject: subjectTitle, from: latestMessage.from } : null)}
+        onClose={() => setShowLinkModal(false)}
+      />
+
+      {/* Convert to Task Modal */}
+      <ConvertEmailToTaskModal
+        isOpen={showConvertModal}
+        thread={activeThreadSummary || (latestMessage ? { id: activeThreadId, subject: subjectTitle, from: latestMessage.from } : null)}
+        latestMessage={latestMessage}
+        onClose={() => setShowConvertModal(false)}
+      />
     </div>
   );
 }

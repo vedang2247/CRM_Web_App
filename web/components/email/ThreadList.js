@@ -58,6 +58,32 @@ export default function ThreadList({ onSelectThread }) {
   const query = useSelector((s) => s.email.query);
 
   const [searchTerm, setSearchTerm] = useState(query);
+  const [linkedTasksByThread, setLinkedTasksByThread] = useState({});
+
+  // Fetch linked tasks for visible threads
+  useEffect(() => {
+    if (!threads || threads.length === 0) return;
+    const fetchPromises = threads.slice(0, 30).map(async (t) => {
+      try {
+        const res = await fetch(`/api/email/linked-tasks?threadId=${encodeURIComponent(t.id)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.count > 0) return { id: t.id, data };
+        }
+      } catch {
+        // ignore
+      }
+      return null;
+    });
+
+    Promise.all(fetchPromises).then((results) => {
+      const map = {};
+      results.filter(Boolean).forEach(({ id, data }) => {
+        map[id] = data;
+      });
+      setLinkedTasksByThread(map);
+    });
+  }, [threads]);
 
   // Debounce search input
   useEffect(() => {
@@ -231,6 +257,25 @@ export default function ThreadList({ onSelectThread }) {
                   <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
                     {thread.snippet}
                   </p>
+
+                  {/* Linked Tasks Badges */}
+                  {linkedTasksByThread[thread.id]?.taskCodes?.length > 0 && (
+                    <div className="flex items-center gap-1 mt-1.5">
+                      {linkedTasksByThread[thread.id].taskCodes.slice(0, 2).map((code) => (
+                        <span
+                          key={code}
+                          className="font-mono text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200/80 px-1.5 py-0.5 rounded"
+                        >
+                          {code}
+                        </span>
+                      ))}
+                      {linkedTasksByThread[thread.id].taskCodes.length > 2 && (
+                        <span className="text-[9px] text-slate-400 font-medium">
+                          +{linkedTasksByThread[thread.id].taskCodes.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );

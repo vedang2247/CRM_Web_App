@@ -27,8 +27,12 @@ import { Provider, useDispatch } from 'react-redux';
 import { store }            from '@/lib/store';
 import { getSocket }        from '@/lib/socket';
 import { setWaStatus, fetchGmailProfile } from '@/lib/slices/connectionsSlice';
-import { setChats, upsertMessage, setAck } from '@/lib/slices/whatsappSlice';
+import {
+  setChats, upsertMessage, setAck,
+  syncChatStatus,
+} from '@/lib/slices/whatsappSlice';
 import TopNav               from '@/components/TopNav';
+import { ToastProvider }    from '@/components/Toast';
 
 // ─── Inner bootstrap — runs inside the Provider so hooks work ───────────────
 
@@ -45,6 +49,9 @@ function AppBootstrap({ children }) {
     const onChats        = (chats)            => {
       if (Array.isArray(chats) && chats.length > 0) {
         dispatch(setChats(chats));
+        // M8: Hydrate chatStatus from DB (replaces localStorage read in setChats)
+        const chatIds = chats.map((c) => c.id);
+        dispatch(syncChatStatus(chatIds));
       }
     };
     const onMessage      = (msg)              => dispatch(upsertMessage(msg));
@@ -69,6 +76,32 @@ function AppBootstrap({ children }) {
 
     // 3. Restore Gmail session from httpOnly cookie (silent — 401 → stays disconnected)
     dispatch(fetchGmailProfile());
+
+    // 4. M8: One-time migration — move wa_chat_status from localStorage to DB.
+    //    A flag in localStorage prevents this from running more than once.
+    (async () => {
+      try {
+        const migrated = localStorage.getItem('wa_status_migrated');
+        if (!migrated) {
+          const saved = localStorage.getItem('wa_chat_status');
+          if (saved) {
+            const statuses = JSON.parse(saved);
+            if (statuses && Object.keys(statuses).length > 0) {
+              await fetch('/api/chats/status/migrate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ statuses }),
+              });
+            }
+          }
+        }
+      } catch {
+        // ignore — migration is best-effort
+      } finally {
+        // Always set flag so we don't attempt migration again
+        try { localStorage.setItem('wa_status_migrated', '1'); } catch { /* ignore */ }
+      }
+    })();
 
     // Cleanup: remove this set of listeners if the component ever unmounts.
     // (In practice Providers never unmounts, but good practice for HMR.)
@@ -97,7 +130,9 @@ function AppBootstrap({ children }) {
 export default function Providers({ children }) {
   return (
     <Provider store={store}>
-      <AppBootstrap>{children}</AppBootstrap>
+      <ToastProvider>
+        <AppBootstrap>{children}</AppBootstrap>
+      </ToastProvider>
     </Provider>
   );
 }

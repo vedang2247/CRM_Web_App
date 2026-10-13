@@ -61,3 +61,31 @@ main {
   }
 }
 
+/* ─── CRM Component Classes ─────────────────────── */
+@layer components {
+  /* Task card container */
+  .task-card {
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-150;
+  }
+
+  /* Generic badge / pill */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold;
+  }
+
+  /* Status pill colours — combine with .badge */
+  .status-pill-open        { @apply bg-slate-100 text-slate-600; }
+  .status-pill-in_progress { @apply bg-blue-100 text-blue-700; }
+  .status-pill-waiting     { @apply bg-amber-100 text-amber-700; }
+  .status-pill-resolved    { @apply bg-emerald-100 text-emerald-700; }
+  .status-pill-closed      { @apply bg-slate-100 text-slate-400; }
+
+  /* Priority dot — 8px coloured circle */
+  .priority-dot {
+    @apply inline-block w-2 h-2 rounded-full shrink-0;
+  }
+  .priority-dot-urgent { @apply bg-red-500; }
+  .priority-dot-high   { @apply bg-orange-500; }
+  .priority-dot-medium { @apply bg-yellow-400; }
+  .priority-dot-low    { @apply bg-slate-300; }
+}
